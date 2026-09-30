@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>폭염 건강지킴이 - 실시간 연동 목업</title>
+<style>
+  :root{
+    --red:#e5342b; --red-dark:#c22119; --red-light:#fdeceb; --orange:#ff7a45;
+    --text:#222; --gray:#7a7a7a; --line:#eee; --bg:#f4f4f2;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{margin:0; font-family:'Segoe UI','Noto Sans KR',sans-serif; background:var(--bg); color:var(--text);}
+  .page-title{display:none;}
+  .wrap{display:flex; justify-content:center; min-height:100dvh;}
+
+  /* 진짜 웹사이트 형태: 폰 프레임 없이 화면 전체 폭 사용.
+     데스크탑에서는 최대 560px로 중앙 정렬(앱형 웹 레이아웃), 모바일/태블릿은 전체 폭.
+     100dvh 사용으로 Safari 상/하단 툴바가 나타나도 버튼이 밀리지 않음 */
+  /* 모든 화면 크기에서 높이를 화면(100dvh)에 고정: 콘텐츠가 길어져도
+     SOS 버튼·하단 네비가 화면 밖으로 밀리지 않고, 내부(.screens)만 스크롤됨 */
+  .phone{
+    width:100%; max-width:560px; height:100dvh; background:#fff;
+    position:relative; display:flex; flex-direction:column;
+    box-shadow:0 0 30px rgba(0,0,0,.08);
+  }
+  @media (max-width:768px){
+    body{ height:100dvh; overflow:hidden; }
+    .wrap{ padding:0; height:100dvh; min-height:0; }
+    .phone{ max-width:none; box-shadow:none; height:100dvh; }
+  }
+  .status-bar{display:none;}
+  .app-header{background:linear-gradient(135deg,var(--red),var(--red-dark)); color:#fff; padding:14px 20px; font-weight:700; font-size:1.05em; text-align:center; letter-spacing:.3px;}
+
+  .screens{flex:1; overflow-y:auto; background:#fafafa; position:relative;}
+  .screen{display:none; padding:20px 18px 90px;}
+  .screen.active{display:block;}
+
+  h2.sec-title{color:var(--red); font-size:1.15em; margin:0 0 4px;}
+  .sub{color:var(--gray); font-size:.85em; margin-bottom:18px;}
+  label.field-label{display:block; font-weight:700; font-size:.92em; margin:18px 0 8px;}
+  select, input[type=text]{
+    width:100%; padding:14px; border:1px solid #ddd; border-radius:12px; font-size:1em; background:#f4f4f4; color:#333;
+  }
+  .row{
+    display:flex; align-items:center; gap:12px; padding:13px 14px; border:1px solid #e3e3e3; border-radius:12px;
+    margin-bottom:9px; cursor:pointer; background:#fff; transition:.15s;
+  }
+  .row .box{width:20px; height:20px; border:2px solid #ccc; border-radius:6px; flex-shrink:0; position:relative; transition:.15s;}
+  .row.checked{background:var(--red-light); border-color:var(--red);}
+  .row.checked .box{background:var(--red); border-color:var(--red);}
+  .row.checked .box:after{content:"✓"; color:#fff; font-size:13px; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);}
+  .row span{font-size:.96em; font-weight:500;}
+
+  .api-toggle{display:flex; justify-content:space-between; align-items:center; padding:14px; background:#fff7f0; border:1px solid #ffe1c8; border-radius:12px; cursor:pointer; margin-top:20px; font-size:.9em; font-weight:600; color:var(--orange);}
+  .api-panel{display:none; margin-top:10px; padding:14px; background:#fff; border:1px dashed #ffcaa3; border-radius:12px;}
+  .api-panel.open{display:block;}
+  .toggle-sw{width:40px; height:22px; background:#ddd; border-radius:20px; position:relative; cursor:pointer; transition:.2s; flex-shrink:0;}
+  .toggle-sw.on{background:var(--red);}
+  .toggle-sw span{position:absolute; top:2px; left:2px; width:18px; height:18px; background:#fff; border-radius:50%; transition:.2s;}
+  .toggle-sw.on span{left:20px;}
+  .sw-row{display:flex; justify-content:space-between; align-items:center; margin-top:10px; font-size:.88em;}
+
+  .btn-primary{width:100%; padding:16px; background:var(--red); color:#fff; border:none; border-radius:14px; font-size:1.02em; font-weight:700; margin-top:26px; cursor:pointer;}
+  .btn-primary:active{background:var(--red-dark);}
+  .btn-secondary{width:100%; padding:12px; background:#fff; color:var(--red); border:1px solid var(--red); border-radius:12px; font-size:.9em; font-weight:700; margin-top:10px; cursor:pointer;}
+
+  .banner{background:linear-gradient(135deg,#ff5b4a,var(--red-dark)); color:#fff; border-radius:16px; padding:20px; margin-bottom:16px; min-height:104px;}
+  .banner .big{font-size:1.6em; font-weight:800;}
+  .banner .small{font-size:.85em; opacity:.9; margin-top:4px;}
+  .card{background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:12px;}
+  .card .ttl{font-weight:700; font-size:.95em; margin-bottom:6px; display:flex; align-items:center; gap:6px;}
+  .card p{font-size:.87em; color:#555; margin:0;}
+  .quick-btns{display:flex; gap:10px; margin-top:16px;}
+  .qbtn{flex:1; text-align:center; background:var(--red-light); color:var(--red-dark); font-weight:700; font-size:.85em; padding:12px 6px; border-radius:12px; cursor:pointer;}
+
+  .med-card{border-left:5px solid var(--red); background:#fff; border-radius:12px; padding:14px; margin-bottom:10px; box-shadow:0 2px 8px rgba(0,0,0,.04);}
+  .med-card .name{font-weight:800; margin-bottom:4px;}
+  .med-card p{font-size:.85em; color:#555; margin:0;}
+  .empty-box{text-align:center; color:var(--gray); padding:50px 20px; font-size:.9em;}
+
+  .result-box{border-radius:14px; padding:16px; margin-top:16px; font-size:.9em; font-weight:600; line-height:1.6;}
+  .result-safe{background:#eafaf0; color:#1f8a4c; border:1px solid #bdeecb;}
+  .result-caution{background:#fff6e5; color:#a86400; border:1px solid #ffe2a8;}
+  .result-danger{background:#fdeceb; color:var(--red-dark); border:1px solid #f7c3bf;}
+
+  .principle-note{background:#fff8f2; border:1px dashed #ffcda6; border-radius:12px; padding:12px 14px; font-size:.78em; color:#a05a2c; margin-top:18px;}
+  .api-note{background:#eef4ff; border:1px dashed #b7cdfa; border-radius:12px; padding:12px 14px; font-size:.76em; color:#2c4d9c; margin-top:12px; line-height:1.5;}
+
+  .sos-btn{
+    position:absolute; right:16px; bottom:92px; width:58px; height:58px; border-radius:50%;
+    background:var(--red); color:#fff; display:flex; align-items:center; justify-content:center;
+    font-weight:800; font-size:.85em; box-shadow:0 6px 16px rgba(229,52,43,.5); cursor:pointer; z-index:15;
+    animation:pulse 2s infinite; -webkit-user-select:none; user-select:none; touch-action:none; -webkit-touch-callout:none;
+  }
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(229,52,43,.5);}70%{box-shadow:0 0 0 14px rgba(229,52,43,0);}100%{box-shadow:0 0 0 0 rgba(229,52,43,0);}}
+  .sos-btn.pressing{animation:none; background:var(--red-dark); box-shadow:0 0 0 8px rgba(229,52,43,.25);}
+  .sos-count-overlay{position:absolute; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; flex-direction:column; z-index:35;}
+  .sos-count-overlay.show{display:flex;}
+  .sos-count-num{font-size:6em; font-weight:900; color:#fff; animation:countPop .3s ease; text-shadow:0 0 30px rgba(229,52,43,.8);}
+  @keyframes countPop{0%{transform:scale(0.4); opacity:0;}60%{transform:scale(1.15); opacity:1;}100%{transform:scale(1); opacity:1;}}
+  .sos-count-label{color:#fff; font-size:.95em; margin-top:14px; font-weight:600;}
+
+  .bottom-nav{display:flex; border-top:1px solid var(--line); background:#fff; position:absolute; left:0; right:0; bottom:0; z-index:10;}
+  .nav-item{flex:1; text-align:center; padding:9px 0 12px; cursor:pointer; color:#aaa; font-size:.72em;}
+  .nav-item .ico{font-size:1.25em; display:block; margin-bottom:2px;}
+  .nav-item.active{color:var(--red); font-weight:700;}
+
+  .modal-overlay{position:absolute; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; z-index:30; padding:30px;}
+  .modal-overlay.show{display:flex;}
+  .modal-box{background:#fff; border-radius:18px; padding:26px 22px; text-align:center; width:100%;}
+  .modal-box h3{color:var(--red-dark); margin-bottom:10px;}
+  .modal-box p{font-size:.88em; color:#555; margin-bottom:20px; line-height:1.5;}
+  .modal-btns{display:flex; flex-direction:column; gap:8px;}
+  .modal-btns button{padding:13px; border-radius:10px; border:none; font-weight:700; font-size:.92em; cursor:pointer;}
+  .mb-danger{background:var(--red); color:#fff;}
+  .mb-outline{background:#fff; border:1px solid #ddd !important; color:#555;}
+
+  .toast{position:absolute; left:50%; top:16px; transform:translateX(-50%); background:#222; color:#fff; padding:10px 18px; border-radius:20px; font-size:.82em; opacity:0; transition:.3s; z-index:40; white-space:nowrap; max-width:88%; text-align:center;}
+  .toast.show{opacity:1;}
+  .footer-links{text-align:center; padding:20px; font-size:.85em; color:var(--gray); max-width:500px; margin:0 auto;}
+  .footer-links a{color:var(--red);}
+  .spin{display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,.5); border-top-color:#fff; border-radius:50%; animation:sp 0.8s linear infinite; vertical-align:middle; margin-right:6px;}
+  @keyframes sp{to{transform:rotate(360deg);}}
+  .badge-live{display:inline-block; background:#1f8a4c; color:#fff; font-size:.65em; padding:2px 8px; border-radius:10px; margin-left:6px; vertical-align:middle;}
+  .badge-off{display:inline-block; background:#999; color:#fff; font-size:.65em; padding:2px 8px; border-radius:10px; margin-left:6px; vertical-align:middle;}
+</style>
+</head>
+<body>
+
+<div class="page-title">
+  <h1>🌡️ 폭염 건강지킴이 — 실시간 API 연동 목업</h1>
+  <p>기상청 단기예보 API(공공데이터포털)로 <b>현재 기온·체감온도</b>를 실시간으로 가져오고, <b>폭염특보</b>를 실시간으로 가져옵니다. 지역을 선택하면 해당 지역 날씨로 바로 갱신돼요.</p>
+</div>
+
+<div class="wrap">
+<div class="phone">
+  <div class="status-bar"><span id="clock"></span><span></span></div>
+  <div class="app-header">🌡️ 폭염 건강지킴이</div>
+
+  <div class="screens">
+
+    <!-- 내정보 등록 화면 -->
+    <div class="screen active" id="screen-info">
+      <h2 class="sec-title">내 정보 등록</h2>
+      <div class="sub">처음 한 번만 입력하면 매번 나에게 맞는 안내를 받을 수 있어요.</div>
+
+      <label class="field-label">나이대</label>
+      <select id="ageSel">
+        <option selected>60대</option><option>70대</option><option>80대 이상</option>
+      </select>
+
+      <label class="field-label">거주 지역 <span class="badge-live">실시간 연동</span></label>
+      <select id="regionSel" onchange="onRegionChange()">
+        <option value="108" data-nx="60" data-ny="127" data-stn="108">서울특별시</option>
+        <option value="112" data-nx="55" data-ny="124" data-stn="112">인천광역시</option>
+        <option value="119" data-nx="60" data-ny="121" data-stn="119">경기도(수원)</option>
+        <option value="159" data-nx="98" data-ny="76" data-stn="159">부산광역시</option>
+        <option value="143" data-nx="89" data-ny="90" data-stn="143">대구광역시</option>
+        <option value="133" data-nx="67" data-ny="100" data-stn="133">대전광역시</option>
+        <option value="156" data-nx="58" data-ny="74" data-stn="156">광주광역시</option>
+        <option value="152" data-nx="102" data-ny="84" data-stn="152">울산광역시</option>
+        <option value="184" data-nx="52" data-ny="38" data-stn="184">제주특별자치도</option>
+        <option value="105" data-nx="73" data-ny="134" data-stn="105">강원도(춘천)</option>
+        <option value="131" data-nx="69" data-ny="107" data-stn="131">충청북도(청주)</option>
+        <option value="129" data-nx="68" data-ny="100" data-stn="129">충청남도(홍성)</option>
+        <option value="146" data-nx="63" data-ny="89" data-stn="146">전라북도(전주)</option>
+        <option value="165" data-nx="51" data-ny="67" data-stn="165">전라남도(목포)</option>
+        <option value="136" data-nx="91" data-ny="106" data-stn="136">경상북도(안동)</option>
+        <option value="155" data-nx="90" data-ny="77" data-stn="155">경상남도(창원)</option>
+        <option value="133" data-nx="66" data-ny="103" data-stn="133">세종특별자치시</option>
+      </select>
+
+      <label class="field-label">보유 질환</label>
+      <div class="row" data-group="disease" onclick="toggleRow(this)"><div class="box"></div><span>고혈압</span></div>
+      <div class="row" data-group="disease" onclick="toggleRow(this)"><div class="box"></div><span>당뇨병</span></div>
+
+      <label class="field-label">복용 중인 약</label>
+      <div class="row" data-group="med" data-med="이뇨제" onclick="toggleRow(this)"><div class="box"></div><span>이뇨제</span></div>
+      <div class="row" data-group="med" data-med="혈압약" onclick="toggleRow(this)"><div class="box"></div><span>혈압약</span></div>
+      <div class="row" data-group="med" data-med="인슐린" onclick="toggleRow(this)"><div class="box"></div><span>인슐린</span></div>
+
+      <label class="field-label">거주 형태</label>
+      <select id="liveSel">
+        <option selected>독거(혼자 거주)</option><option>노인부부(노노가구)</option><option>가족과 동거</option>
+      </select>
+
+      <label class="field-label">보호자 전화번호 (SOS 연결용)</label>
+      <input type="text" placeholder="예: 01012345678 (비워두면 119로 연결)">
+
+      <div class="api-toggle" onclick="toggleApi()">
+        <span id="apiArrow">▶ 🌦️ 기상청 API 연동 설정 (선택, 눌러서 펼치기)</span>
+      </div>
+      <div class="api-panel" id="apiPanel">
+        <div class="sw-row"><span>폭염특보 발효 시 즉시 알림</span><div class="toggle-sw on" onclick="event.stopPropagation(); this.classList.toggle('on')"><span></span></div></div>
+        <div class="sw-row"><span>매일 오전 9시 요약 알림</span><div class="toggle-sw" onclick="event.stopPropagation(); this.classList.toggle('on')"><span></span></div></div>
+        <div class="api-note">📡 기상청 단기예보 조회서비스(공공데이터포털) 실시간 연동 중<span id="apiStatus" class="badge-live">기온 연동됨</span></div>
+      </div>
+
+      <div class="principle-note">⚠️ 이 앱은 약 복용량을 임의로 바꾸거나 중단하도록 안내하지 않습니다. 이상 증상이 있으면 반드시 의료진과 상담하세요.</div>
+
+      <button class="btn-primary" onclick="registerAndGo()">등록하고 시작하기</button>
+    </div>
+
+    <!-- 홈 화면 -->
+    <div class="screen" id="screen-home">
+      <div class="banner" id="weatherBanner">
+        <div class="small" id="bannerDate">불러오는 중...</div>
+        <div class="big" id="bannerTemp"><span class="spin"></span>실시간 기온 확인 중</div>
+        <div class="small" id="bannerWarn">폭염특보 정보를 확인하고 있어요...</div>
+      </div>
+      <button class="btn-secondary" onclick="fetchWeather()">🔄 날씨 새로고침</button>
+      <div class="card"><div class="ttl">💧 수분 섭취 안내</div><p>갈증이 없어도 시간마다 물을 조금씩 마셔주세요. 이뇨제·인슐린을 복용 중이면 탈수에 더 주의가 필요해요.</p></div>
+      <div class="card" id="homeMedTip"><div class="ttl">💊 복용약 보관 안내</div><p>등록된 약이 없어요. '내정보'에서 복용약을 등록하면 맞춤 안내를 볼 수 있어요.</p></div>
+      <div class="card"><div class="ttl">🕐 외출 자제 시간</div><p>낮 12시~오후 5시는 가급적 외출을 피하고, 부득이한 경우 그늘과 양산을 이용하세요.</p></div>
+      <div class="quick-btns">
+        <div class="qbtn" onclick="switchScreen('check')">🩺 증상 체크하기</div>
+        <div class="qbtn" onclick="switchScreen('meds')">💊 내 약 확인</div>
+      </div>
+    </div>
+
+    <!-- 증상체크 화면 -->
+    <div class="screen" id="screen-check">
+      <h2 class="sec-title">증상 체크</h2>
+      <div class="sub">해당하는 증상을 모두 선택해주세요.</div>
+      <div class="row" data-group="symptom" onclick="toggleRow(this)"><div class="box"></div><span>심한 갈증 / 입마름</span></div>
+      <div class="row" data-group="symptom" onclick="toggleRow(this)"><div class="box"></div><span>어지럼증</span></div>
+      <div class="row" data-group="symptom" onclick="toggleRow(this)"><div class="box"></div><span>두통 / 메스꺼움</span></div>
+      <div class="row" data-group="symptom" onclick="toggleRow(this)"><div class="box"></div><span>식은땀 / 근육 경련</span></div>
+      <div class="row" data-group="symptom" data-danger="1" onclick="toggleRow(this)"><div class="box"></div><span>의식이 흐려짐 / 실신</span></div>
+      <button class="btn-primary" onclick="checkSymptoms()">증상 확인하기</button>
+      <div id="symptomResult"></div>
+    </div>
+
+    <!-- 복용약 화면 -->
+    <div class="screen" id="screen-meds">
+      <h2 class="sec-title">내 복용약 폭염 안내</h2>
+      <div class="sub">등록한 약을 기준으로 폭염 시 참고할 안내예요.</div>
+      <div id="medList"></div>
+      <div class="principle-note">⚠️ 위 안내는 참고용 정보이며 약을 임의로 조절·중단하는 근거로 사용하지 마세요. 궁금한 점은 반드시 의사·약사와 상담하세요.</div>
+    </div>
+
+  </div>
+
+  <div class="sos-btn" id="sosBtn">SOS</div>
+  <div class="sos-count-overlay" id="sosCountOverlay"><div class="sos-count-num" id="sosCountNum">3</div><div class="sos-count-label">계속 누르고 계세요...</div></div>
+
+  <div class="bottom-nav">
+    <div class="nav-item active" data-screen="info" onclick="switchScreen('info')"><span class="ico">🏠</span>내정보</div>
+    <div class="nav-item" data-screen="home" onclick="switchScreen('home')"><span class="ico">🌡️</span>홈</div>
+    <div class="nav-item" data-screen="check" onclick="switchScreen('check')"><span class="ico">🩺</span>증상체크</div>
+    <div class="nav-item" data-screen="meds" onclick="switchScreen('meds')"><span class="ico">💊</span>복용약</div>
+  </div>
+
+  <div class="modal-overlay" id="sosModal">
+    <div class="modal-box">
+      <h3>🚨 SOS 긴급 연락</h3>
+      <p>등록하신 보호자 또는 119로 연락합니다. 정말 도움이 필요하신가요?</p>
+      <div class="modal-btns">
+        <button class="mb-danger" onclick="sendSOS()">보호자 / 119 연결하기</button>
+        <button class="mb-outline" onclick="closeSOS()">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+</div>
+
+<div class="footer-links">
+  📌 기온·습도·체감온도와 폭염특보가 공공데이터포털 기상청 API로 실시간 연동됩니다. 특보 발효 시 배너에 🚨 표시로 자동 안내됩니다.
+</div>
+
+<script>
+/* ===== 공공데이터포털 기상청 API 설정 ===== */
+const SERVICE_KEY = "e643062a7ababb7959b69afc05dcabb7fe7a28c397abe06bd8fad12262a2de05"; // 발급받은 서비스키
+const NCST_URL = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst"; // 초단기실황(기온/습도)
+const WRN_URL  = "https://apis.data.go.kr/1360000/WthrWrnInfoService/getWthrWrnList"; // 기상특보(폭염 등) - 별도 활용신청 필요
+
+let currentTemp = null, currentHumidity = null;
+
+function pad(n){ return n<10 ? '0'+n : ''+n; }
+
+/* base_date, base_time 계산: 초단기실황은 매시 40분 이후 그 시각 정시 발표, 그 전이면 이전 시각 */
+function getBaseDateTime(){
+  const now = new Date();
+  let h = now.getHours();
+  let m = now.getMinutes();
+  if(m < 40){ // 아직 이번 시각 데이터가 안 나왔으면 한 시간 전 정시 데이터 사용
+    now.setHours(h - 1);
+  }
+  const yyyy = now.getFullYear();
+  const mm = pad(now.getMonth()+1);
+  const dd = pad(now.getDate());
+  const hh = pad(now.getHours());
+  return { base_date: `${yyyy}${mm}${dd}`, base_time: `${hh}00` };
+}
+
+/* 체감온도 간이 계산(기온+습도 기반, 여름철 근사식) */
+function heatIndexApprox(tempC, rh){
+  if(tempC < 27) return tempC; // 27도 미만은 보정 큰 의미 없어 실측 기온 사용
+  const T = tempC * 9/5 + 32; // 화씨 변환
+  const R = rh;
+  let HI = -42.379 + 2.04901523*T + 10.14333127*R - 0.22475541*T*R
+    - 0.00683783*T*T - 0.05481717*R*R + 0.00122874*T*T*R
+    + 0.00085282*T*R*R - 0.00000199*T*T*R*R;
+  return Math.round(((HI-32)*5/9)*10)/10;
+}
+
+function getSelectedRegion(){
+  const sel = document.getElementById('regionSel');
+  const opt = sel.options[sel.selectedIndex];
+  return { name: opt.text, nx: opt.dataset.nx, ny: opt.dataset.ny, stn: opt.dataset.stn };
+}
+
+async function fetchWeather(){
+  const region = getSelectedRegion();
+  document.getElementById('bannerTemp').innerHTML = '<span class="spin"></span>실시간 기온 확인 중';
+  document.getElementById('bannerWarn').textContent = '폭염특보 정보를 확인하고 있어요...';
+  document.getElementById('bannerDate').textContent = new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'}) + ' · ' + region.name;
+
+  // 1) 현재 기온/습도 (초단기실황)
+  try{
+    const {base_date, base_time} = getBaseDateTime();
+    const url = `${NCST_URL}?serviceKey=${SERVICE_KEY}&pageNo=1&numOfRows=100&dataType=JSON&base_date=${base_date}&base_time=${base_time}&nx=${region.nx}&ny=${region.ny}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const items = data.response.body.items.item;
+    const t1h = items.find(i=>i.category==='T1H');
+    const reh = items.find(i=>i.category==='REH');
+    currentTemp = t1h ? parseFloat(t1h.obsrValue) : null;
+    currentHumidity = reh ? parseFloat(reh.obsrValue) : null;
+
+    if(currentTemp !== null){
+      const hi = heatIndexApprox(currentTemp, currentHumidity||50);
+      document.getElementById('bannerTemp').innerHTML = `기온 ${currentTemp}℃ · 체감 ${hi}℃`;
+      document.getElementById('apiStatus').textContent = '기온 연동됨';
+      document.getElementById('apiStatus').className = 'badge-live';
+      updateHeatWarnBanner(hi);
+    }else{
+      document.getElementById('bannerTemp').textContent = '기온 정보를 불러올 수 없어요';
+    }
+  }catch(e){
+    document.getElementById('bannerTemp').textContent = '⚠️ 기온 정보를 불러오지 못했어요';
+    document.getElementById('apiStatus').textContent = '연동 오류';
+    document.getElementById('apiStatus').className = 'badge-off';
+  }
+
+  // 2) 폭염특보 (기상청_기상특보 조회서비스 - 활용신청 완료)
+  try{
+    const url = `${WRN_URL}?serviceKey=${SERVICE_KEY}&pageNo=1&numOfRows=10&dataType=JSON&stnId=${region.stn}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const rc = data.response && data.response.header ? data.response.header.resultCode : null;
+    if(rc === '00'){
+      const items = data.response.body && data.response.body.items ? data.response.body.items.item : null;
+      const heatWarn = Array.isArray(items) ? items.find(i => i.title && i.title.includes('폭염')) : (items && items.title && items.title.includes('폭염') ? items : null);
+      if(heatWarn){
+        document.getElementById('bannerWarn').textContent = `🚨 ${heatWarn.title}`;
+      }else{
+        document.getElementById('bannerWarn').textContent = '현재 발효 중인 폭염특보가 없어요.';
+      }
+    }else if(rc === '03'){
+      // NO_DATA: 키는 정상 등록됐고, 현재 발효 중인 특보가 없는 정상 응답
+      document.getElementById('bannerWarn').textContent = '현재 발효 중인 폭염특보가 없어요.';
+    }else{
+      throw new Error('not registered');
+    }
+  }catch(e){
+    document.getElementById('bannerWarn').textContent = '폭염특보 API는 활용신청 승인 후 자동으로 표시돼요. (현재 미승인)';
+  }
+}
+
+function updateHeatWarnBanner(hi){
+  const banner = document.getElementById('weatherBanner');
+  if(hi >= 35){ banner.style.background = 'linear-gradient(135deg,#c22119,#7a0f09)'; }
+  else if(hi >= 33){ banner.style.background = 'linear-gradient(135deg,#ff5b4a,#c22119)'; }
+  else{ banner.style.background = 'linear-gradient(135deg,#ff9466,#ff5b4a)'; }
+}
+
+function onRegionChange(){ fetchWeather(); }
+
+/* ===== 기존 UI 로직 ===== */
+function toggleRow(el){
+  el.classList.toggle('checked');
+  if(el.dataset.group==='med') renderMedTips();
+}
+function toggleApi(){
+  const panel=document.getElementById('apiPanel');
+  const arrow=document.getElementById('apiArrow');
+  panel.classList.toggle('open');
+  arrow.textContent = panel.classList.contains('open')
+    ? '▼ 🌦️ 기상청 API 연동 설정 (펼침)'
+    : '▶ 🌦️ 기상청 API 연동 설정 (선택, 눌러서 펼치기)';
+}
+function switchScreen(name){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active', n.dataset.screen===name));
+  if(name==='meds') renderMedList();
+  if(name==='home') renderMedTips();
+}
+function registerAndGo(){
+  showToast('등록이 완료되었습니다! 실시간 폭염 정보를 불러올게요 😊');
+  setTimeout(()=>{ switchScreen('home'); fetchWeather(); }, 900);
+}
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2400);
+}
+const medInfo={
+  '이뇨제':'탈수 위험이 높아질 수 있어요. 폭염일에는 갈증이 없어도 자주, 조금씩 물을 마셔보세요.',
+  '혈압약':'더운 날씨에서 어지럼증이 더 잘 느껴질 수 있다는 보고가 있어요. 갑자기 일어날 때는 잠시 앉아서 쉬어주세요.',
+  '인슐린':'고온에 보관하면 효과가 떨어질 수 있어요. 그늘지고 서늘한 곳에 보관하고 저혈당 증상(식은땀·어지럼)이 있는지 확인해보세요.',
+};
+function getCheckedMeds(){
+  return Array.from(document.querySelectorAll('.row[data-group="med"].checked')).map(r=>r.dataset.med);
+}
+function renderMedList(){
+  const meds=getCheckedMeds();
+  const box=document.getElementById('medList');
+  if(meds.length===0){
+    box.innerHTML='<div class="empty-box">등록된 약이 없어요.<br>‘내정보’ 화면에서 복용약을 선택해보세요.</div>';
+    return;
+  }
+  box.innerHTML=meds.map(m=>`<div class="med-card"><div class="name">💊 ${m}</div><p>${medInfo[m]}</p></div>`).join('');
+}
+function renderMedTips(){
+  const meds=getCheckedMeds();
+  const box=document.getElementById('homeMedTip');
+  if(meds.length===0){
+    box.innerHTML='<div class="ttl">💊 복용약 보관 안내</div><p>등록된 약이 없어요. \'내정보\'에서 복용약을 등록하면 맞춤 안내를 볼 수 있어요.</p>';
+  }else{
+    box.innerHTML='<div class="ttl">💊 복용약 보관 안내</div><p>'+meds.map(m=>`<b>${m}</b>: ${medInfo[m]}`).join('<br>')+'</p>';
+  }
+}
+function checkSymptoms(){
+  const rows=document.querySelectorAll('.row[data-group="symptom"].checked');
+  const result=document.getElementById('symptomResult');
+  const danger=Array.from(rows).some(r=>r.dataset.danger==='1');
+  if(rows.length===0){
+    result.innerHTML='<div class="result-box result-safe">😊 특별한 증상이 없으시네요! 그래도 폭염일에는 규칙적으로 수분을 섭취해주세요.</div>';
+  }else if(danger){
+    result.innerHTML='<div class="result-box result-danger">🚨 의식이 흐려지는 증상은 위급할 수 있어요. 즉시 119에 신고하거나 보호자에게 연락하세요. 시원한 곳으로 옮기고, 의식이 있다면 물을 조금씩 마시게 해주세요.</div>';
+  }else{
+    result.innerHTML='<div class="result-box result-caution">⚠️ 시원한 곳으로 이동해 휴식을 취하고 물을 천천히 마셔주세요. 증상이 계속되면 의료진과 상담하는 것이 좋아요.</div>';
+  }
+}
+let sosHoldTimer = null;
+let sosCountInterval = null;
+let sosCountValue = 3;
+
+function startSOSHold(e){
+  if(e) e.preventDefault();
+  const btn = document.getElementById('sosBtn');
+  const overlay = document.getElementById('sosCountOverlay');
+  const numEl = document.getElementById('sosCountNum');
+  btn.classList.add('pressing');
+  sosCountValue = 3;
+  numEl.textContent = sosCountValue;
+  overlay.classList.add('show');
+  numEl.style.animation = 'none';
+  void numEl.offsetWidth;
+  numEl.style.animation = '';
+
+  sosCountInterval = setInterval(()=>{
+    sosCountValue -= 1;
+    if(sosCountValue >= 1){
+      numEl.textContent = sosCountValue;
+      numEl.style.animation = 'none';
+      void numEl.offsetWidth;
+      numEl.style.animation = '';
+    }
+  }, 1000);
+
+  sosHoldTimer = setTimeout(()=>{
+    cancelSOSHold(false);
+    openSOS();
+  }, 3000);
+}
+
+function cancelSOSHold(){
+  const btn = document.getElementById('sosBtn');
+  const overlay = document.getElementById('sosCountOverlay');
+  btn.classList.remove('pressing');
+  overlay.classList.remove('show');
+  clearTimeout(sosHoldTimer);
+  clearInterval(sosCountInterval);
+  sosHoldTimer = null;
+  sosCountInterval = null;
+}
+
+const sosBtnEl = document.getElementById('sosBtn');
+sosBtnEl.addEventListener('pointerdown', function(e){
+  try{ sosBtnEl.setPointerCapture(e.pointerId); }catch(err){}
+  startSOSHold(e);
+});
+sosBtnEl.addEventListener('pointerup', cancelSOSHold);
+sosBtnEl.addEventListener('pointercancel', cancelSOSHold);
+sosBtnEl.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+
+function openSOS(){ document.getElementById('sosModal').classList.add('show'); }
+function closeSOS(){ document.getElementById('sosModal').classList.remove('show'); }
+function sendSOS(){
+  closeSOS();
+  showToast('📞 보호자 / 119 연결을 시도합니다 (목업)');
+}
+function updateClock(){
+  const now = new Date();
+  let h = now.getHours(); const ampm = h < 12 ? '오전' : '오후';
+  h = h % 12; if(h===0) h = 12;
+  document.getElementById('clock').textContent = `${ampm} ${h}:${pad(now.getMinutes())}`;
+}
+updateClock();
+setInterval(updateClock, 30000);
+</script>
+
+</body>
+</html>
